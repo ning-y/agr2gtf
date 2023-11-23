@@ -9,27 +9,30 @@ DESCRIPTION <- str_c(
   "Add gene type records to a GTF file, overwriting previous existing gene ",
   "type records, inferring gene from gene_id of existing non-gene type ",
   "records.")
-KEEP_ATTRIBUTES_HELP <- str_c(
+KEEP_ATTRIBUTES_DEFAULT <- "gene_name,gene_type,tag"
+KEEP_ATTRIBUTES_HELP <- str_glue(
   "Comma-delimited list of attributes to keep, in addition to gene_id. ",
   "The value of an attribute in a newly constructed gene type record is the ",
   "comma-delimited list of unique values for that attribute for all non-gene ",
-  "type records in the input GTF with that the same gene_id.")
+  "type records in the input GTF with that the same gene_id. For example, the ",
+  "default value is \"{KEEP_ATTRIBUTES_DEFAULT}\".")
 
 main <- function() {
   parser <- ArgumentParser(description=DESCRIPTION)
   parser$add_argument("input", help="Input GTF file")
   parser$add_argument(
-    "--keep-attributes", help=KEEP_ATTRIBUTES_HELP,
-    default="gene_name,gene_type,tag")
+    "--keep-attributes",
+    help=KEEP_ATTRIBUTES_HELP, default=KEEP_ATTRIBUTES_DEFAULT)
   parser$add_argument("output", help="Output GTF file")
   args <- parser$parse_args()
   export.gff2(
-    agr2gtf(args$input, str_split_1(args$`keep-attributes`)),
+    agr2gtf(args$input, str_split_1(args$keep_attributes, ",")),
     args$output)
 }
 
 agr2gtf <- function(gtf_in, keep_attributes) {
   # Check and account for possibly empty gene_id
+  gtf <- import.gff2(gtf_in)
   stopifnot("gene_id" %in% colnames(mcols(gtf)))
   is_na_gene <- is.na(mcols(gtf)$gene_id)
   if (any(is_na_gene))
@@ -40,7 +43,8 @@ agr2gtf <- function(gtf_in, keep_attributes) {
 
   # Check and account for genes on different chromosomes and strands
   has_multiple_seq_strand <- gtf_bygene %>%
-    map_lgl(~length(unique(seqnames(.x))) != 1 || length(unique(strand(.x))) != 1)
+    map_lgl(
+      ~length(unique(seqnames(.x))) != 1 || length(unique(strand(.x))) != 1)
   if (any(has_multiple_seq_strand))
     warning(str_glue(
       "{x} of total {y} genes lie on multiple sequences or strands; ",
@@ -60,10 +64,10 @@ agr2gtf <- function(gtf_in, keep_attributes) {
     map(~subset(.x, mcols(.x)$type != "gene"))
 
   # Create a row of type "gene" and populate some of its mcols. I don't use
-  # GenomicRanges::union because that only takes the union of overlapping ranges,
-  # but a gene can have non-overlapping transcripts. For example, human novel
-  # transcript ENSG00000290385.1 has non-overlapping transcripts ENST00000440163.1
-  # and ENST00000455464.7.
+  # GenomicRanges::union because that only takes the union of overlapping
+  # ranges, but a gene can have non-overlapping transcripts. For example, human
+  # novel transcript ENSG00000290385.1 has non-overlapping transcripts
+  # ENST00000440163.1# and ENST00000455464.7.
   gtf_genes_sans_mcols <- gtf_bygene_sans_generow %>%
     map(
     ~GRanges(
@@ -78,7 +82,8 @@ agr2gtf <- function(gtf_in, keep_attributes) {
         source=.mcols_orig$source %>% unique() %>% str_flatten(","),
         type="gene", gene_id=.name)
       for (att in keep_attributes) {
-        .mcol_new[[att]] <- .mcols_orig[[att]] %>% unique() %>% str_flatten(",")}
+        .mcol_new[[att]] <- .mcols_orig[[att]] %>%
+          unique() %>% str_flatten(",")}
       .mcol_new })
   gtf_genes <- pmap(
     list(gtf_genes_sans_mcols, gtf_genes_mcols_only),
@@ -88,7 +93,9 @@ agr2gtf <- function(gtf_in, keep_attributes) {
   gtf_bygene_with_generow <- pmap(
     list(gtf_genes, gtf_bygene_sans_generow), c)
 
-  gtf_bygene_with_generow
+  gtf_bygene_with_generow %>% purrr::reduce(c)
 }
 
-if (sys.nframe() == 0) { main() }
+if (sys.nframe() == 0) {
+  options(warn=1)  # Print warnings as they occur
+  main() }
