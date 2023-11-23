@@ -2,13 +2,14 @@
 
 ### Installation
 
-This is a command-line R script with three dependencies: argparse (the R package, not the python module), tidyverse, and rtracklayer.
+This is a command-line R script with four dependencies: argparse (the R package, not the python module), furrr, rtracklayer, and tidyverse.
 These can be installed, for example, using conda:
 
 ```bash
 conda create -n agr2gtf -y
 conda activate agr2gtf
-conda install -c conda-forge -c bioconda r-argparse r-tidyverse bioconductor-rtracklayer -y
+conda install -c conda-forge -c bioconda \
+    bioconductor-rtracklayer r-argparse r-furrr r-tidyverse -y
 ```
 
 ### Quickstart
@@ -16,8 +17,9 @@ conda install -c conda-forge -c bioconda r-argparse r-tidyverse bioconductor-rtr
 The command-line options are simple,
 
 ```bash
-$ ./agr2gtf -h
-usage: ./agr2gtf [-h] [--keep-attributes KEEP_ATTRIBUTES] input output
+$ ./agr2gtf --help
+usage: ./agr2gtf [-h] [--threads THREADS] [--keep-attributes KEEP_ATTRIBUTES]
+                 input output
 
 Add gene type records to a GTF file, overwriting previous existing gene type
 records, inferring gene from gene_id of existing non-gene type records.
@@ -28,6 +30,9 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
+  --threads THREADS, -t THREADS
+                        Number of parallel sessions. The default is 1 (don't
+                        parallelize)
   --keep-attributes KEEP_ATTRIBUTES
                         Comma-delimited list of attributes to keep, in
                         addition to gene_id. The value of an attribute in a
@@ -43,4 +48,4 @@ I haven't checked the behavior with `/dev/stdin` and `/dev/stdout` --- internall
 
 ### Resources
 
-I haven't gotten around to implementing parallel processing on this, so it might take a while.
+With 20 threads, takes three hours for 30,000 genes comprising 1.2 million records.

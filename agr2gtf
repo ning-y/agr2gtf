@@ -1,9 +1,11 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages({
+  library(furrr)
   library(argparse)
   library(rtracklayer)
   library(tidyverse)})
+options(future.globals.maxSize=1*1024^4)  # 1 terabyte
 
 DESCRIPTION <- str_c(
   "Add gene type records to a GTF file, overwriting previous existing gene ",
@@ -21,10 +23,15 @@ main <- function() {
   parser <- ArgumentParser(description=DESCRIPTION)
   parser$add_argument("input", help="Input GTF file")
   parser$add_argument(
+    "--threads", "-t", default=1,
+    help="Number of parallel sessions. The default is 1 (don't parallelize)")
+  parser$add_argument(
     "--keep-attributes",
     help=KEEP_ATTRIBUTES_HELP, default=KEEP_ATTRIBUTES_DEFAULT)
   parser$add_argument("output", help="Output GTF file")
+
   args <- parser$parse_args()
+  plan(multisession, workers=args$threads)
   export.gff2(
     agr2gtf(args$input, str_split_1(args$keep_attributes, ",")),
     args$output)
@@ -69,29 +76,34 @@ agr2gtf <- function(gtf_in, keep_attributes) {
   # novel transcript ENSG00000290385.1 has non-overlapping transcripts
   # ENST00000440163.1# and ENST00000455464.7.
   gtf_genes_sans_mcols <- gtf_bygene_sans_generow %>%
-    map(
+    future_map(
     ~GRanges(
       seqnames=unique(seqnames(.x)),
       ranges=IRanges(min(start(.x)), max(end(.x))),
-      strand=unique(strand(.x))))
+    strand=unique(strand(.x))),
+    .progress=TRUE)
   gtf_genes_mcols_only <- gtf_bygene_sans_generow %>%
     names() %>%
-    map(function(.name) {
-      .mcols_orig <- gtf_bygene_sans_generow[[.name]] %>% as_tibble()
-      .mcol_new <- tibble(
-        source=.mcols_orig$source %>% unique() %>% str_flatten(","),
-        type="gene", gene_id=.name)
-      for (att in keep_attributes) {
-        .mcol_new[[att]] <- .mcols_orig[[att]] %>%
-          unique() %>% str_flatten(",")}
-      .mcol_new })
-  gtf_genes <- pmap(
+    future_map(
+      function(.name) {
+        .mcols_orig <- gtf_bygene_sans_generow[[.name]] %>% as_tibble()
+        .mcol_new <- tibble(
+          source=.mcols_orig$source %>% unique() %>% str_flatten(","),
+          type="gene", gene_id=.name)
+        for (att in keep_attributes) {
+          .mcol_new[[att]] <- .mcols_orig[[att]] %>%
+            unique() %>% str_flatten(",")}
+        .mcol_new },
+      .progress=TRUE)
+  gtf_genes <- future_pmap(
     list(gtf_genes_sans_mcols, gtf_genes_mcols_only),
-    function(.x, .y) { mcols(.x) <- .y; .x })
+    function(.x, .y) { mcols(.x) <- .y; .x },
+    .progress=TRUE)
 
   # Interleave the new gene rows into original non-gene rows
-  gtf_bygene_with_generow <- pmap(
-    list(gtf_genes, gtf_bygene_sans_generow), c)
+  gtf_bygene_with_generow <- future_pmap(
+    list(gtf_genes, gtf_bygene_sans_generow), c, .progress=TRUE)
+  message()  # future_* progress bars do not end with a linebreak
 
   gtf_bygene_with_generow %>% purrr::reduce(c)
 }
