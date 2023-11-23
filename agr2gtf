@@ -32,9 +32,9 @@ main <- function() {
 
   args <- parser$parse_args()
   plan(multisession, workers=args$threads)
-  export.gff2(
+  export(
     agr2gtf(args$input, str_split_1(args$keep_attributes, ",")),
-    args$output)
+    args$output, "GTF")
 }
 
 agr2gtf <- function(gtf_in, keep_attributes) {

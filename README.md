@@ -44,7 +44,7 @@ options:
 ```
 
 The output is always an uncompressed GTF.
-I haven't checked the behavior with `/dev/stdin` and `/dev/stdout` --- internally it is handled by R, so the behavior should be consistent with whatever R does with those file descriptors.
+Support for file descriptors /dev/stdin and /dev/stdout is spotty, and depends on the behavior of rtracklayer import/export.
 
 ### Resources
 
